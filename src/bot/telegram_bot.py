@@ -37,8 +37,9 @@ def format_header_message(job_count: int) -> str:
     """Format header message before sending jobs."""
     return (
         f"🚀 *LinkedIn Job Alert — Frontend Developer*\n"
-        f"📅 Tìm thấy *{job_count} việc làm mới* trong 24h qua!\n"
-        f"🎯 Junior Level \u2022 Onsite \u2022 Ho Chi Minh City\n"
+        f"📅 Tìm thấy *{job_count} việc làm phù hợp* (đã lọc theo tech stack)\n"
+        f"🎯 Junior Level • Onsite • Ho Chi Minh City\n"
+        f"⬇️ Sắp xếp theo độ phù hợp (cao nhất lên đầu)\n"
     )
 
 
@@ -83,11 +84,16 @@ async def send_jobs_to_telegram(
             posted = job.get("posted_time", "N/A")
             url = job.get("url", "#")
             salary = job.get("salary")
+            score = job.get("score")
+            matched = job.get("matched_keywords", [])
 
             salary_part = f" 💰 {salary}" if salary else ""
+            score_part = f" 🎯 {score}/100" if score is not None else ""
+            match_part = f"\n⚙️ {', '.join(matched[:6])}" if matched else ""
             line = (
-                f"\n*{i}. {title}*\n"
-                f"🏢 {company} • 📍 {location} • ⏰ {posted}{salary_part}\n"
+                f"\n*{i}. {title}*{score_part}\n"
+                f"🏢 {company} • 📍 {location} • ⏰ {posted}{salary_part}"
+                f"{match_part}\n"
                 f"🔗 [Xem chi tiết]({url})"
             )
             job_lines.append(line)

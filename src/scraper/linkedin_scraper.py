@@ -3,6 +3,7 @@ LinkedIn Job Scraper using Playwright (headless browser).
 Scrapes public LinkedIn Jobs search without requiring login.
 """
 import asyncio
+import random
 import re
 import urllib.parse
 from dataclasses import dataclass, asdict
@@ -10,6 +11,7 @@ from typing import Optional
 
 from playwright.async_api import async_playwright, Page, TimeoutError as PWTimeout
 from src.utils.logger import log
+from src.scraper.job_scorer import title_pre_filter, score_job
 
 
 @dataclass
@@ -205,6 +207,50 @@ async def scrape_jobs_for_keyword(
     return jobs
 
 
+async def fetch_job_description(page: Page, url: str) -> str:
+    """Mở trang job detail và lấy full description text."""
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=25000)
+        await page.wait_for_timeout(1500)
+
+        # Dismiss sign-in modal nếu có
+        for dismiss_sel in [
+            '[data-tracking-control-name="public_jobs_contextual-sign-in-modal_modal_dismiss"]',
+            'button[aria-label="Dismiss"]',
+            'button.modal__dismiss',
+        ]:
+            try:
+                el = page.locator(dismiss_sel)
+                if await el.count() > 0:
+                    await el.first.click()
+                    await page.wait_for_timeout(500)
+            except Exception:
+                pass
+
+        # Extract description text — thử nhiều selector
+        desc = ""
+        for desc_sel in [
+            "div.show-more-less-html__markup",
+            "section.description div.description__text",
+            "div.description__text--rich",
+            "div[class*='description__text']",
+            "div[class*='job-description']",
+        ]:
+            el = page.locator(desc_sel).first
+            if await el.count() > 0:
+                desc = (await el.text_content() or "").strip()
+                if desc:
+                    break
+
+        return desc
+    except PWTimeout:
+        log.warning(f"Timeout fetching description: {url}")
+        return ""
+    except Exception as e:
+        log.warning(f"Error fetching description {url}: {e}")
+        return ""
+
+
 async def run_scraper(config: dict) -> list[dict]:
     """Main scraper entry point. Returns all new jobs."""
     linkedin_cfg = config["linkedin"]
@@ -263,9 +309,56 @@ async def run_scraper(config: dict) -> list[dict]:
                     all_jobs.append(job)
             
             # Be polite between requests
-            await asyncio.sleep(2)
+            await asyncio.sleep(random.uniform(1.5, 3.0))
+
+        # ── Scoring Pipeline ──────────────────────────────────────────────
+        scoring_cfg = config.get("scoring", {})
+        if scoring_cfg.get("enabled", False):
+            # Step 1: Title pre-filter (nhanh, không cần HTTP request)
+            before_title = len(all_jobs)
+            all_jobs = [j for j in all_jobs if title_pre_filter(j, scoring_cfg)]
+            log.info(f"Title pre-filter: {before_title} → {len(all_jobs)} jobs còn lại")
+
+            # Step 2: Fetch job descriptions (mở từng job URL)
+            if scoring_cfg.get("fetch_description", False):
+                max_fetch = scoring_cfg.get("max_description_fetch", 30)
+                candidates = all_jobs[:max_fetch]
+                log.info(f"Fetching descriptions cho {len(candidates)} jobs...")
+
+                detail_page = await context.new_page()
+                await detail_page.route(
+                    "**/*.{png,jpg,jpeg,gif,webp,svg,ico,woff,woff2}",
+                    lambda r: r.abort(),
+                )
+                for job in candidates:
+                    desc = await fetch_job_description(detail_page, job["url"])
+                    job["description"] = desc
+                    log.debug(f"  → {len(desc)} chars: {job['title']} @ {job.get('company')}")
+                    await asyncio.sleep(random.uniform(1.5, 2.5))
+                await detail_page.close()
+
+            # Step 3: Score từng job
+            min_score = scoring_cfg.get("min_score", 25)
+            for job in all_jobs:
+                job_score, matched = score_job(job, scoring_cfg)
+                job["score"] = job_score
+                job["matched_keywords"] = matched
+                log.debug(
+                    f"  Score {job_score:3d} | {job.get('title')} @ {job.get('company')} "
+                    f"| match: {matched}"
+                )
+
+            # Step 4: Lọc và sort theo điểm
+            before_score = len(all_jobs)
+            all_jobs = [j for j in all_jobs if j.get("score", 0) >= min_score]
+            all_jobs.sort(key=lambda j: j.get("score", 0), reverse=True)
+            top = all_jobs[0]["score"] if all_jobs else "N/A"
+            log.info(
+                f"Score filter (≥{min_score}): {before_score} → {len(all_jobs)} jobs "
+                f"| Top score: {top}"
+            )
 
         await browser.close()
 
-    log.info(f"Total unique jobs scraped: {len(all_jobs)}")
+    log.info(f"Total unique jobs after scoring: {len(all_jobs)}")
     return all_jobs

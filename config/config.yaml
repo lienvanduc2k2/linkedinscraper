@@ -26,3 +26,83 @@ scraper:
   scroll_count: 5             # Số lần scroll để load thêm
   timeout_ms: 30000           # Timeout cho mỗi page load
   headless: true              # Chạy không hiện browser
+
+# ── Scoring & Filtering ──────────────────────────────────────────────────────
+scoring:
+  enabled: true
+  min_score: 25               # Ngưỡng điểm tối thiểu (0–100), bỏ qua job dưới mức này
+  fetch_description: true     # Mở từng job để đọc full description (chính xác hơn)
+  max_description_fetch: 30   # Tối đa bao nhiêu job sẽ được fetch description
+
+  # +20 pts mỗi keyword nếu xuất hiện trong TITLE
+  title_include_keywords:
+    - "frontend"
+    - "front-end"
+    - "front end"
+    - "react"
+    - "vue"
+    - "angular"
+    - "fullstack"
+    - "full-stack"
+    - "full stack"
+    - "web developer"
+    - "ui developer"
+
+  # -40 pts mỗi keyword nếu xuất hiện trong TITLE (loại bỏ sớm)
+  title_exclude_keywords:
+    - "backend"
+    - "back-end"
+    - "devops"
+    - "qa engineer"
+    - "tester"
+    - "data engineer"
+    - "data scientist"
+    - "machine learning"
+    - "blockchain"
+    - "mobile developer"
+    - "ios developer"
+    - "android developer"
+    - "embedded"
+    - "firmware"
+
+  # +15 pts mỗi keyword nếu xuất hiện trong title HOẶC description
+  must_have_keywords:
+    - "react"
+    - "javascript"
+    - "typescript"
+    - "html"
+    - "css"
+    - "frontend"
+    - "front-end"
+
+  # +5 pts mỗi keyword nếu xuất hiện trong title HOẶC description
+  nice_to_have_keywords:
+    - "next.js"
+    - "nextjs"
+    - "vue"
+    - "nuxt"
+    - "tailwind"
+    - "graphql"
+    - "redux"
+    - "zustand"
+    - "git"
+    - "rest api"
+    - "figma"
+    - "jest"
+    - "webpack"
+    - "vite"
+    - "storybook"
+    - "docker"
+
+  # -50 pts nếu xuất hiện trong description (tín hiệu job không phù hợp junior)
+  exclude_keywords:
+    - "10+ years"
+    - "10 years experience"
+    - "8+ years"
+    - "8 years experience"
+    - "7+ years"
+    - "senior only"
+    - "principal engineer"
+    - "staff engineer"
+    - "tech lead only"
+
