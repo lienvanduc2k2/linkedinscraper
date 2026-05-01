@@ -49,6 +49,14 @@ def extract_job_id(url: str) -> str:
     return str(hash(url))
 
 
+def normalize_linkedin_url(url: str) -> str:
+    """Normalize LinkedIn URL: replace country subdomains (vn., uk., etc.) with www."""
+    if not url:
+        return url
+    # Replace any country-specific subdomain with www (e.g. vn.linkedin.com → www.linkedin.com)
+    return re.sub(r'https?://[a-z]{2}\.linkedin\.com', 'https://www.linkedin.com', url)
+
+
 async def scrape_jobs_for_keyword(
     page: Page,
     keyword: str,
@@ -158,7 +166,7 @@ async def scrape_jobs_for_keyword(
                         if href:
                             break
 
-                clean_url = href.split("?")[0] if href else ""
+                clean_url = normalize_linkedin_url(href.split("?")[0]) if href else ""
 
                 # Salary (if shown)
                 salary = None

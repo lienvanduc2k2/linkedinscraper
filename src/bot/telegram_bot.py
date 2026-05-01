@@ -57,7 +57,7 @@ async def send_jobs_to_telegram(
     max_per_batch: int = 10,
     delay_seconds: float = 2.0,
 ) -> int:
-    """Send job listings to Telegram. Returns number of successfully sent jobs."""
+    """Send all job listings in ONE combined Telegram message (auto-split if > 4096 chars)."""
     if not jobs:
         log.info("No new jobs to send")
         await _send_no_jobs_message(bot_token, chat_id)
@@ -65,37 +65,74 @@ async def send_jobs_to_telegram(
 
     bot = Bot(token=bot_token)
     sent_count = 0
+    MAX_LEN = 4096
 
     try:
-        # Send jobs in batches
-        batch = jobs[:max_per_batch]
-        for i, job in enumerate(batch):
+        display_jobs = jobs[:max_per_batch]
+        total = len(display_jobs)
+
+        # Build header
+        header = format_header_message(total)
+
+        # Build each job entry (compact format for combined message)
+        job_lines = []
+        for i, job in enumerate(display_jobs, 1):
+            title = job.get("title", "N/A")
+            company = job.get("company", "N/A")
+            location = job.get("location", "N/A")
+            posted = job.get("posted_time", "N/A")
+            url = job.get("url", "#")
+            salary = job.get("salary")
+
+            salary_part = f" 💰 {salary}" if salary else ""
+            line = (
+                f"\n*{i}. {title}*\n"
+                f"🏢 {company} • 📍 {location} • ⏰ {posted}{salary_part}\n"
+                f"🔗 [Xem chi tiết]({url})"
+            )
+            job_lines.append(line)
+
+        footer = f"\n\n✅ *Đã gửi xong {total} việc làm mới!*\n💡 Bot tự động cập nhật lúc *13:20* hàng ngày."
+
+        # Pack jobs into chunks, respecting Telegram's 4096-char limit
+        chunks = []
+        current_chunk = header
+        for line in job_lines:
+            if len(current_chunk) + len(line) + len(footer) + 1 > MAX_LEN:
+                chunks.append(current_chunk + footer)
+                current_chunk = f"📋 *Tiếp theo ({len(chunks) + 1}):*"
+            current_chunk += "\n" + line
+
+        chunks.append(current_chunk + footer)
+
+        # Send chunks
+        for chunk_idx, chunk in enumerate(chunks):
             try:
-                msg = format_job_message(job, i + 1, len(batch))
                 await bot.send_message(
                     chat_id=chat_id,
-                    text=msg,
+                    text=chunk,
                     parse_mode=ParseMode.MARKDOWN,
                     disable_web_page_preview=True,
                 )
-                sent_count += 1
-                log.debug(f"Sent job {i+1}/{len(batch)}: {job.get('title')} @ {job.get('company')}")
-                await asyncio.sleep(delay_seconds)
+                sent_count = total
+                log.debug(f"Sent chunk {chunk_idx + 1}/{len(chunks)}")
+                if chunk_idx < len(chunks) - 1:
+                    await asyncio.sleep(delay_seconds)
             except TelegramError as e:
-                log.error(f"Failed to send job {i+1} (markdown): {e}")
-                # Try plain text fallback
+                log.error(f"Failed to send chunk {chunk_idx + 1} (markdown): {e}")
+                # Fallback: strip markdown
                 try:
-                    plain = (
-                        f"\U0001f4bc {job.get('title', 'N/A')} — {job.get('company', 'N/A')}\n"
-                        f"\U0001f4cd {job.get('location', 'N/A')} | \u23f0 {job.get('posted_time', 'N/A')}\n"
-                        f"\U0001f517 {job.get('url', '#')}"
+                    import re as _re
+                    plain = _re.sub(r"[*_`\[\]()]", "", chunk)
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=plain,
+                        disable_web_page_preview=True,
                     )
-                    await bot.send_message(chat_id=chat_id, text=plain)
-                    sent_count += 1
+                    sent_count = total
                     await asyncio.sleep(delay_seconds)
                 except Exception as e2:
                     log.error(f"Fallback also failed: {e2}")
-
 
     except TelegramError as e:
         log.error(f"Telegram error: {e}")
@@ -105,7 +142,7 @@ async def send_jobs_to_telegram(
         except Exception:
             pass
 
-    log.success(f"Successfully sent {sent_count} jobs to Telegram")
+    log.success(f"Successfully sent {sent_count} jobs to Telegram in {len(chunks) if jobs else 0} message(s)")
     return sent_count
 
 
