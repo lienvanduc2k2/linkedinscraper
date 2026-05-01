@@ -67,16 +67,6 @@ async def send_jobs_to_telegram(
     sent_count = 0
 
     try:
-        # Send header
-        header = format_header_message(len(jobs))
-        await bot.send_message(
-            chat_id=chat_id,
-            text=header,
-            parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True,
-        )
-        await asyncio.sleep(delay_seconds)
-
         # Send jobs in batches
         batch = jobs[:max_per_batch]
         for i, job in enumerate(batch):
@@ -106,14 +96,6 @@ async def send_jobs_to_telegram(
                 except Exception as e2:
                     log.error(f"Fallback also failed: {e2}")
 
-        # Send footer
-        footer = format_footer_message()
-        await bot.send_message(
-            chat_id=chat_id,
-            text=footer,
-            parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True,
-        )
 
     except TelegramError as e:
         log.error(f"Telegram error: {e}")
