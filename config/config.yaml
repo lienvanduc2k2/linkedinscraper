@@ -1,0 +1,28 @@
+linkedin:
+  keywords:
+    - "Frontend Developer"
+    - "Frontend Engineer"
+    - "React Developer"
+    - "Vue Developer"
+    - "Angular Developer"
+  location: "Ho Chi Minh City, Vietnam"
+  date_posted: "r86400"       # Last 24 hours (86400 seconds)
+  experience_level: "2"       # 2 = Entry level (Junior)
+  job_type: "F"               # F = Full-time (onsite)
+  remote: false               # Onsite only
+
+scheduler:
+  enabled: true
+  hour: 13
+  minute: 20
+  timezone: "Asia/Ho_Chi_Minh"
+
+telegram:
+  max_jobs_per_batch: 10      # Số job tối đa mỗi lần gửi
+  delay_between_messages: 1   # Giây delay giữa các message (tránh flood)
+
+scraper:
+  max_jobs_per_keyword: 25    # Tối đa job mỗi keyword
+  scroll_count: 5             # Số lần scroll để load thêm
+  timeout_ms: 30000           # Timeout cho mỗi page load
+  headless: true              # Chạy không hiện browser
