@@ -56,8 +56,6 @@ async def main(dry_run: bool = False, test_telegram: bool = False, force: bool =
 
     if not all_jobs:
         log.warning("No jobs found from LinkedIn. Check if LinkedIn blocked the scraper.")
-        if not dry_run:
-            await send_jobs_to_telegram([], bot_token, chat_id)
         return
 
     # ── Step 2: Filter new jobs (not yet sent) ──
@@ -69,6 +67,9 @@ async def main(dry_run: bool = False, test_telegram: bool = False, force: bool =
         new_jobs = store.get_new_jobs(all_jobs)
 
     log.info(f"📋 New jobs to send: {len(new_jobs)}")
+    if not new_jobs:
+        log.info("No new jobs to send — skipping Telegram")
+        return
 
     # ── Step 3: Print preview ──
     for i, job in enumerate(new_jobs[:5], 1):

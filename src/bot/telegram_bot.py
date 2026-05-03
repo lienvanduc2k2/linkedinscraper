@@ -2,53 +2,29 @@
 Telegram Bot — Gửi thông báo việc làm Frontend Developer.
 """
 import asyncio
-import os
 from telegram import Bot
-from telegram.constants import ParseMode
 from telegram.error import TelegramError
 from src.utils.logger import log
 
 
-def format_job_message(job: dict, index: int, total: int) -> str:
-    """Format a single job into a beautiful Telegram message."""
-    title = job.get("title", "N/A")
-    company = job.get("company", "N/A")
+def _format_job_line(index: int, job: dict) -> str:
+    """Format một job theo đúng format yêu cầu."""
+    title    = job.get("title", "N/A")
+    company  = job.get("company", "N/A")
     location = job.get("location", "N/A")
-    url = job.get("url", "#")
-    posted = job.get("posted_time", "N/A")
-    salary = job.get("salary")
+    posted   = job.get("posted_time", "N/A")
+    url      = job.get("url", "#")
+    matched  = job.get("matched_keywords", [])
 
-    salary_line = f"💰 *Lương:* {salary}\n" if salary else ""
+    lines = [
+        f"{index}. {title}",
+        f"🏢 {company} • 📍 {location} • ⏰ {posted}",
+    ]
+    if matched:
+        lines.append(f"⚙️ {', '.join(matched[:6])}")
+    lines.append(f"🔗 Xem chi tiết ({url})")
 
-    message = (
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"💼 *{title}*\n"
-        f"🏢 {company}\n"
-        f"📍 {location}\n"
-        f"⏰ {posted}\n"
-        f"{salary_line}"
-        f"🔗 [Xem chi tiết]({url})\n"
-        f"━━━━━━━━━━━━━━━━━━━━"
-    )
-    return message
-
-
-def format_header_message(job_count: int) -> str:
-    """Format header message before sending jobs."""
-    return (
-        f"🚀 *LinkedIn Job Alert — Frontend Developer*\n"
-        f"📅 Tìm thấy *{job_count} việc làm phù hợp* (đã lọc theo tech stack)\n"
-        f"🎯 Junior Level • Onsite • Ho Chi Minh City\n"
-        f"⬇️ Sắp xếp theo độ phù hợp (cao nhất lên đầu)\n"
-    )
-
-
-def format_footer_message() -> str:
-    """Format footer message after all jobs."""
-    return (
-        "✅ *Đã gửi xong tất cả việc làm mới!*\n"
-        "💡 Bot sẽ tự động cập nhật lúc *13:20* hàng ngày."
-    )
+    return "\n".join(lines)
 
 
 async def send_jobs_to_telegram(
@@ -58,10 +34,9 @@ async def send_jobs_to_telegram(
     max_per_batch: int = 10,
     delay_seconds: float = 2.0,
 ) -> int:
-    """Send all job listings in ONE combined Telegram message (auto-split if > 4096 chars)."""
+    """Gửi danh sách job vào 1 message. Im lặng hoàn toàn nếu không có job."""
     if not jobs:
-        log.info("No new jobs to send")
-        await _send_no_jobs_message(bot_token, chat_id)
+        log.info("No new jobs — skipping Telegram message")
         return 0
 
     bot = Bot(token=bot_token)
@@ -72,73 +47,36 @@ async def send_jobs_to_telegram(
         display_jobs = jobs[:max_per_batch]
         total = len(display_jobs)
 
-        # Build header
-        header = format_header_message(total)
+        # Build từng block job
+        job_blocks = [_format_job_line(i, job) for i, job in enumerate(display_jobs, 1)]
 
-        # Build each job entry (compact format for combined message)
-        job_lines = []
-        for i, job in enumerate(display_jobs, 1):
-            title = job.get("title", "N/A")
-            company = job.get("company", "N/A")
-            location = job.get("location", "N/A")
-            posted = job.get("posted_time", "N/A")
-            url = job.get("url", "#")
-            salary = job.get("salary")
-            score = job.get("score")
-            matched = job.get("matched_keywords", [])
+        # Gộp thành chunks ≤ 4096 ký tự
+        chunks: list[str] = []
+        current = ""
+        for block in job_blocks:
+            separator = "\n\n" if current else ""
+            if len(current) + len(separator) + len(block) > MAX_LEN:
+                chunks.append(current)
+                current = block
+            else:
+                current += separator + block
+        if current:
+            chunks.append(current)
 
-            salary_part = f" 💰 {salary}" if salary else ""
-            score_part = f" 🎯 {score}/100" if score is not None else ""
-            match_part = f"\n⚙️ {', '.join(matched[:6])}" if matched else ""
-            line = (
-                f"\n*{i}. {title}*{score_part}\n"
-                f"🏢 {company} • 📍 {location} • ⏰ {posted}{salary_part}"
-                f"{match_part}\n"
-                f"🔗 [Xem chi tiết]({url})"
-            )
-            job_lines.append(line)
-
-        footer = f"\n\n✅ *Đã gửi xong {total} việc làm mới!*\n💡 Bot tự động cập nhật lúc *13:20* hàng ngày."
-
-        # Pack jobs into chunks, respecting Telegram's 4096-char limit
-        chunks = []
-        current_chunk = header
-        for line in job_lines:
-            if len(current_chunk) + len(line) + len(footer) + 1 > MAX_LEN:
-                chunks.append(current_chunk + footer)
-                current_chunk = f"📋 *Tiếp theo ({len(chunks) + 1}):*"
-            current_chunk += "\n" + line
-
-        chunks.append(current_chunk + footer)
-
-        # Send chunks
-        for chunk_idx, chunk in enumerate(chunks):
+        # Gửi từng chunk
+        for idx, chunk in enumerate(chunks):
             try:
                 await bot.send_message(
                     chat_id=chat_id,
                     text=chunk,
-                    parse_mode=ParseMode.MARKDOWN,
                     disable_web_page_preview=True,
                 )
                 sent_count = total
-                log.debug(f"Sent chunk {chunk_idx + 1}/{len(chunks)}")
-                if chunk_idx < len(chunks) - 1:
+                log.debug(f"Sent chunk {idx + 1}/{len(chunks)}")
+                if idx < len(chunks) - 1:
                     await asyncio.sleep(delay_seconds)
             except TelegramError as e:
-                log.error(f"Failed to send chunk {chunk_idx + 1} (markdown): {e}")
-                # Fallback: strip markdown
-                try:
-                    import re as _re
-                    plain = _re.sub(r"[*_`\[\]()]", "", chunk)
-                    await bot.send_message(
-                        chat_id=chat_id,
-                        text=plain,
-                        disable_web_page_preview=True,
-                    )
-                    sent_count = total
-                    await asyncio.sleep(delay_seconds)
-                except Exception as e2:
-                    log.error(f"Fallback also failed: {e2}")
+                log.error(f"Failed to send chunk {idx + 1}: {e}")
 
     except TelegramError as e:
         log.error(f"Telegram error: {e}")
@@ -148,30 +86,8 @@ async def send_jobs_to_telegram(
         except Exception:
             pass
 
-    log.success(f"Successfully sent {sent_count} jobs to Telegram in {len(chunks) if jobs else 0} message(s)")
+    log.success(f"Sent {sent_count} jobs in {len(chunks) if jobs else 0} message(s)")
     return sent_count
-
-
-async def _send_no_jobs_message(bot_token: str, chat_id: str):
-    """Send a message when no new jobs are found."""
-    bot = Bot(token=bot_token)
-    try:
-        await bot.send_message(
-            chat_id=chat_id,
-            text=(
-                "📭 *Không có việc làm mới*\n"
-                "Hôm nay chưa có Frontend Developer job mới nào trong 24h qua.\n"
-                "Bot sẽ kiểm tra lại vào ngày mai lúc *13:20* ⏰"
-            ),
-            parse_mode=ParseMode.MARKDOWN,
-        )
-    except TelegramError as e:
-        log.error(f"Failed to send 'no jobs' message: {e}")
-    finally:
-        try:
-            await bot.close()
-        except Exception:
-            pass
 
 
 async def test_telegram_connection(bot_token: str, chat_id: str) -> bool:
@@ -182,12 +98,7 @@ async def test_telegram_connection(bot_token: str, chat_id: str) -> bool:
         log.info(f"Bot connected: @{me.username} ({me.first_name})")
         await bot.send_message(
             chat_id=chat_id,
-            text=(
-                "✅ *LinkedIn Job Bot — Kết nối thành công!*\n"
-                "🤖 Bot đã sẵn sàng gửi thông báo việc làm Frontend Developer\n"
-                "⏰ Lịch chạy: *13:20* hàng ngày (Giờ Việt Nam)"
-            ),
-            parse_mode=ParseMode.MARKDOWN,
+            text="✅ LinkedIn Job Bot — kết nối thành công!\n🤖 Sẵn sàng gửi thông báo việc làm.",
         )
         return True
     except TelegramError as e:
