@@ -7,6 +7,7 @@ from telegram.error import TelegramError
 from src.utils.logger import log
 
 
+
 def _format_job_line(index: int, job: dict) -> str:
     """Format một job theo đúng format yêu cầu."""
     title    = job.get("title", "N/A")
@@ -31,6 +32,7 @@ async def send_jobs_to_telegram(
     jobs: list[dict],
     bot_token: str,
     chat_id: str,
+    topic_id: int | None = None,
     max_per_batch: int = 10,
     delay_seconds: float = 2.0,
 ) -> int:
@@ -68,6 +70,7 @@ async def send_jobs_to_telegram(
             try:
                 await bot.send_message(
                     chat_id=chat_id,
+                    message_thread_id=topic_id,
                     text=chunk,
                     disable_web_page_preview=True,
                 )
@@ -90,7 +93,7 @@ async def send_jobs_to_telegram(
     return sent_count
 
 
-async def test_telegram_connection(bot_token: str, chat_id: str) -> bool:
+async def test_telegram_connection(bot_token: str, chat_id: str, topic_id: int | None = None) -> bool:
     """Test Telegram bot connection."""
     bot = Bot(token=bot_token)
     try:
@@ -98,6 +101,7 @@ async def test_telegram_connection(bot_token: str, chat_id: str) -> bool:
         log.info(f"Bot connected: @{me.username} ({me.first_name})")
         await bot.send_message(
             chat_id=chat_id,
+            message_thread_id=topic_id,
             text="✅ LinkedIn Job Bot — kết nối thành công!\n🤖 Sẵn sàng gửi thông báo việc làm.",
         )
         return True

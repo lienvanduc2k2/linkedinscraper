@@ -30,6 +30,8 @@ async def main(dry_run: bool = False, test_telegram: bool = False, force: bool =
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    topic_id_raw = os.getenv("TELEGRAM_TOPIC_ID")
+    topic_id = int(topic_id_raw) if topic_id_raw else None
 
     if not bot_token or not chat_id:
         log.error("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID in .env")
@@ -38,7 +40,7 @@ async def main(dry_run: bool = False, test_telegram: bool = False, force: bool =
     # Test mode
     if test_telegram:
         log.info("Testing Telegram connection...")
-        ok = await test_telegram_connection(bot_token, chat_id)
+        ok = await test_telegram_connection(bot_token, chat_id, topic_id)
         if ok:
             log.success("Telegram test passed!")
         else:
@@ -88,6 +90,7 @@ async def main(dry_run: bool = False, test_telegram: bool = False, force: bool =
         jobs=new_jobs,
         bot_token=bot_token,
         chat_id=chat_id,
+        topic_id=topic_id,
         max_per_batch=telegram_cfg.get("max_jobs_per_batch", 10),
         delay_seconds=telegram_cfg.get("delay_between_messages", 1),
     )
